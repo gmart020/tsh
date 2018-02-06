@@ -205,7 +205,7 @@ void eval(char *cmdline)
             
             if (execve(argv[0], argv, environ) < 0) {
                 /* Command not found. Terminate child. */
-                printf("%s: Command not found.\n", argv[0]);
+                printf("%s: Command not found\n", argv[0]);
                 exit(0);
             }
         }
@@ -299,16 +299,15 @@ int builtin_cmd(char **argv)
     char *command = argv[0];
 
     if (strcmp(command, "jobs") == 0) {
-        // Print a list of running and stopped jobs.
         listjobs(jobs);
         return 1;
     }
     else if (strcmp(command, "bg") == 0) {
-        
+        do_bgfg(argv);
         return 1;
     }
     else if (strcmp(command, "fg") == 0) {
-        
+        do_bgfg(argv);
         return 1;
     }
     else if (strcmp(command, "quit") == 0) {
@@ -322,6 +321,52 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
+    // Check if user provided PID or JID.
+    if (argv[1] == NULL) {
+        printf("%s command requires PID or %%jobid argument\n", argv[0]);
+        return;
+    }
+    
+    int id;
+    struct job_t *job;
+    // Determine if user entered a PID or JID.
+    if (argv[1][0] == '%') {
+        // JID entered. Extract jid.
+        
+        if ((id = atoi(&argv[1][1])) == 0) {
+            printf("%s: argument must be a PID of %%jobid\n", argv[0]);
+            return;
+        }
+        if ((job = getjobjid(jobs, id)) == NULL) {
+            printf("%%%d: No such job\n", id);
+            return;
+        }
+    }
+    else {
+        // PID entered. Extract pid.
+        if ((id = atoi(&argv[1][0])) == 0) {
+            printf("%s: argument must be a PID of %%jobid\n", argv[0]);
+            return;
+        }
+        if ((job = getjobpid(jobs, id)) == NULL) {
+            printf("(%d): No such process\n", id);
+            return;
+        }
+    }
+    
+    kill(-job->pid, SIGCONT);   // Send the SIGCONT signal to the correct process group.
+    
+    // Determine if 'bg' or 'fg' should run.
+    if (strcmp(argv[0], "bg") == 0) {
+        // Run job in background.
+        job->state = BG;
+        print_job(job->pid);
+    }
+    else {
+        // Run job in foreground. Must wait for it to complete before moving on.
+        job->state = FG;
+        waitfg(job->pid);
+    }
     return;
 }
 
